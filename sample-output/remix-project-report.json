@@ -1,0 +1,69 @@
+{
+  "validator": "hardhat-v3-migration-validator",
+  "version": "1.0.0",
+  "timestamp": "2026-03-31T18:20:33.282Z",
+  "project": "C:\\Users\\ivan0\\gh-autopilot\\repos\\remix-project",
+  "overallStatus": "FAIL",
+  "summary": {
+    "total": 5,
+    "BLOCKER": 2,
+    "LOW": 1,
+    "HIGH": 1,
+    "INFO": 1
+  },
+  "context": {
+    "hardhatVersion": "^2.14.0",
+    "moduleType": "cjs",
+    "configFile": null,
+    "packageManager": "yarn",
+    "deployStack": null,
+    "plugins": []
+  },
+  "findings": [
+    {
+      "id": "HHV-001",
+      "severity": "BLOCKER",
+      "title": "Hardhat V2 still installed",
+      "evidence": "hardhat: \"^2.14.0\"",
+      "why": "Migration to V3 not started or incomplete",
+      "fix": "npm install --save-dev hardhat@^3",
+      "confidence": "high"
+    },
+    {
+      "id": "HHV-004",
+      "severity": "BLOCKER",
+      "title": "No hardhat config file found",
+      "evidence": "Searched: hardhat.config.ts, hardhat.config.mts, hardhat.config.js, hardhat.config.mjs, hardhat.config.cjs",
+      "why": "Hardhat cannot run without a config file",
+      "fix": "Create hardhat.config.ts with defineConfig()",
+      "confidence": "high"
+    },
+    {
+      "id": "HHV-003",
+      "severity": "HIGH",
+      "title": "package.json missing \"type\": \"module\"",
+      "evidence": "Current type: (unset)",
+      "why": "Hardhat V3 requires ESM config. Without type:module the config may not load correctly",
+      "fix": "Add \"type\": \"module\" to package.json",
+      "confidence": "high"
+    },
+    {
+      "id": "HHV-002",
+      "severity": "LOW",
+      "title": "Legacy package: ts-node",
+      "evidence": "ts-node: \"10.9.1\"",
+      "why": "This package is deprecated or superseded in Hardhat V3",
+      "fix": "Remove — V3 uses tsx/native TS support",
+      "confidence": "high"
+    },
+    {
+      "id": "HHV-005",
+      "severity": "INFO",
+      "title": "Execution checks skipped",
+      "evidence": "--no-exec flag",
+      "why": "Skipped by user request",
+      "fix": "None",
+      "confidence": "high"
+    }
+  ]
+}
