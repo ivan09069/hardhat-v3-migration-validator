@@ -1,6 +1,6 @@
 # Hardhat V3 Migration Validator Report
 
-**Scanned:** 2026-03-31T18:20:33.282Z
+**Scanned:** 2026-03-31T18:35:46.637Z
 **Project:** `C:\Users\ivan0\gh-autopilot\repos\remix-project`
 **Overall:** ❌ **FAIL**
 

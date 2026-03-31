@@ -606,15 +606,20 @@ function main() {
   const { report } = generateReport();
   printConsole(report);
 
-  // Write JSON
-  const jsonPath = join(ROOT, "hardhat-v3-validator-report.json");
-  writeFileSync(jsonPath, JSON.stringify(report, null, 2));
-  console.log(`  JSON report:     ${jsonPath}`);
-
-  // Write Markdown
-  const mdPath = join(ROOT, "hardhat-v3-validator-report.md");
-  writeFileSync(mdPath, renderMarkdown(report));
-  console.log(`  Markdown report: ${mdPath}`);
+  // Write reports — try target dir first, fall back to cwd
+  function writeReport(name, content) {
+    for (const dir of [ROOT, process.cwd()]) {
+      try {
+        const p = join(dir, name);
+        writeFileSync(p, content);
+        console.log(`  ${name}: ${p}`);
+        return;
+      } catch {}
+    }
+    console.error(`  Could not write ${name} (permission denied)`);
+  }
+  writeReport("hardhat-v3-validator-report.json", JSON.stringify(report, null, 2));
+  writeReport("hardhat-v3-validator-report.md", renderMarkdown(report));
   console.log("");
 
   // Exit code
