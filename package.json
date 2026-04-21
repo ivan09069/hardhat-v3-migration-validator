@@ -1,0 +1,35 @@
+{
+  "name": "hardhat-v3-migration-validator",
+  "version": "0.1.0",
+  "description": "Validate whether a Hardhat project is actually V3-ready after migration.",
+  "type": "module",
+  "bin": {
+    "hardhat-v3-migration-validator": "./validate-hardhat-v3.mjs"
+  },
+  "files": [
+    "validate-hardhat-v3.mjs",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "hardhat",
+    "hardhat-v3",
+    "migration",
+    "validator",
+    "ethereum",
+    "base",
+    "tooling"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ivan09069/hardhat-v3-migration-validator.git"
+  },
+  "homepage": "https://github.com/ivan09069/hardhat-v3-migration-validator",
+  "bugs": {
+    "url": "https://github.com/ivan09069/hardhat-v3-migration-validator/issues"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

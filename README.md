@@ -24,18 +24,30 @@ Designed to complement Nomic Foundation's migration skill effort ([#8016](https:
 ## Usage
 
 ```bash
-# Scan current directory
-node validate-hardhat-v3.mjs
+# One-shot (no install) — scan current directory
+npx hardhat-v3-migration-validator --project .
 
 # Scan a specific project
-node validate-hardhat-v3.mjs --project /path/to/hardhat-repo
+npx hardhat-v3-migration-validator --project /path/to/hardhat-repo
 
 # Skip execution checks (no npm/hardhat invocations)
-node validate-hardhat-v3.mjs --no-exec
+npx hardhat-v3-migration-validator --no-exec
 
 # Include LOW and INFO severity findings
-node validate-hardhat-v3.mjs --include-low
+npx hardhat-v3-migration-validator --include-low
 ```
+
+Or run the source file directly without publishing:
+
+```bash
+node validate-hardhat-v3.mjs --project .
+```
+
+## Example findings
+
+- **BLOCKER:** No Hardhat config detected at repo root
+- **HIGH:** Hardhat v2 still installed
+- **MEDIUM:** ESM/CJS mismatch in config and package mode
 
 ## Output
 

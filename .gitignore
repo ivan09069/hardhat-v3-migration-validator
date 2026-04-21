@@ -1,3 +1,4 @@
 node_modules/
 hardhat-v3-validator-report.json
 hardhat-v3-validator-report.md
+*.tgz
