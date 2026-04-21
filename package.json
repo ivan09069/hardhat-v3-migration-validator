@@ -1,10 +1,10 @@
 {
   "name": "hardhat-v3-migration-validator",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Validate whether a Hardhat project is actually V3-ready after migration.",
   "type": "module",
   "bin": {
-    "hardhat-v3-migration-validator": "./validate-hardhat-v3.mjs"
+    "hardhat-v3-migration-validator": "validate-hardhat-v3.mjs"
   },
   "files": [
     "validate-hardhat-v3.mjs",
