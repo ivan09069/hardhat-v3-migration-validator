@@ -19,22 +19,22 @@ Designed to complement Nomic Foundation's migration skill effort ([#8016](https:
 3. **Config shape** — defineConfig usage, declarative plugins, network types, legacy etherscan, secrets handling, task/hook patterns
 4. **Plugin ecosystem** — hardhat-deploy, OZ upgrades, gas-reporter, coverage, verify, docgen, typechain, waffle
 5. **Source/tests** — ethers v5 API patterns, hardhat-deploy v1 conventions, ambient hre assumptions, stale scripts
-6. **Execution** — Node version, Hardhat binary, config load test
+6. **Execution (opt-in)** — Node version, installed Hardhat binary, config load test
 
 ## Usage
 
 ```bash
-# One-shot (no install) — scan current directory
-npx hardhat-v3-migration-validator --project .
+# Scan current directory without executing its code
+node validate-hardhat-v3.mjs --project .
 
 # Scan a specific project
-npx hardhat-v3-migration-validator --project /path/to/hardhat-repo
+node validate-hardhat-v3.mjs --project /path/to/hardhat-repo
 
-# Skip execution checks (no npm/hardhat invocations)
-npx hardhat-v3-migration-validator --no-exec
+# Run installed Hardhat only after trusting the target project's code
+node validate-hardhat-v3.mjs --project /path/to/hardhat-repo --exec
 
 # Include LOW and INFO severity findings
-npx hardhat-v3-migration-validator --include-low
+node validate-hardhat-v3.mjs --include-low
 ```
 
 Or run the source file directly without publishing:
@@ -51,7 +51,9 @@ node validate-hardhat-v3.mjs --project .
 
 ## Output
 
-Two report files are written to the target project directory:
+Console output is the default. Opt in to either report with `--json` or
+`--markdown`, using `--output-dir /path/to/review-output` to select its destination
+(default: current working directory). Existing files are never overwritten:
 
 - `hardhat-v3-validator-report.json` — machine-readable, stable schema
 - `hardhat-v3-validator-report.md` — human-readable with remediation guidance
@@ -63,9 +65,11 @@ Exit codes: `0` = PASS, `1` = HIGH findings, `2` = BLOCKER findings.
 | Flag | Description |
 |------|-------------|
 | `--project <path>` | Target repo (default: current directory) |
-| `--json` | Force JSON report output |
-| `--markdown` | Force Markdown report output |
-| `--no-exec` | Skip execution checks |
+| `--json` | Write JSON report |
+| `--markdown` | Write Markdown report |
+| `--output-dir <path>` | Report destination (default: current working directory) |
+| `--exec` | Execute the target's installed Hardhat CLI |
+| `--no-exec` | Skip execution checks (default; overrides `--exec`) |
 | `--include-low` | Include LOW and INFO findings |
 
 ## Severity Model
@@ -101,16 +105,32 @@ See `sample-output/` for full report examples.
 
 ## Requirements
 
-- Node.js 18+ (no dependencies)
+- Node.js 22.13+ on a supported even-numbered major release (no CLI dependencies)
 
 ## Design
 
-- Forensic-first: reads files, never mutates the repo
-- Deterministic: same repo produces same findings
-- Fast: completes in under 5 seconds on large monorepos
-- Graceful: works on broken repos without crashing
+- Static checks read files without executing project code
+- Reports are explicit; runtime checks execute trusted target code and may have side effects
+- Static findings are heuristics, with runtime results dependent on the local environment
 - High signal: every finding has severity, evidence, why, and fix
 
 ## License
 
 MIT
+
+## Safe review defaults
+
+The CLI now performs static checks by default: it does not execute target code,
+install packages, or write reports. `--no-exec` remains supported and takes priority
+if both execution flags are supplied. Runtime checks require explicit `--exec`
+and use only the installed Hardhat CLI, without invoking npx or a shell.
+
+Reports require `--json` and/or `--markdown`. Set `--output-dir` to a separate
+review directory. Existing reports are never overwritten, and there is no fallback
+write into the source directory. A static PASS is a heuristic result, not a compile,
+test, deployment, or security certification.
+
+```sh
+node validate-hardhat-v3.mjs --project . --no-exec
+node --test
+```

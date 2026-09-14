@@ -11,9 +11,9 @@
  *   node validate-hardhat-v3.mjs --no-exec
  */
 
-import { readFileSync, readdirSync, existsSync, statSync, writeFileSync } from "node:fs";
-import { join, basename, extname, resolve } from "node:path";
-import { execSync } from "node:child_process";
+import { readFileSync, readdirSync, existsSync, statSync, writeFileSync, mkdirSync, realpathSync } from "node:fs";
+import { join, basename, extname, resolve, sep } from "node:path";
+import { execFileSync } from "node:child_process";
 import { parseArgs } from "node:util";
 
 // ─── CLI ─────────────────────────────────────────────────────────────────────
@@ -22,11 +22,13 @@ const { values: args } = parseArgs({
     project:      { type: "string",  default: "." },
     json:         { type: "boolean", default: false },
     markdown:     { type: "boolean", default: false },
+    exec:         { type: "boolean", default: false },
+    "output-dir": { type: "string" },
     "no-exec":    { type: "boolean", default: false },
     "include-low":{ type: "boolean", default: false },
     help:         { type: "boolean", default: false },
   },
-  strict: false,
+  strict: true,
 });
 
 if (args.help) {
@@ -40,15 +42,20 @@ Options:
   --project <path>   Target repo (default: current directory)
   --json             Write hardhat-v3-validator-report.json
   --markdown         Write hardhat-v3-validator-report.md
-  --no-exec          Skip execution checks (install, build, config load)
+  --exec             Run installed Hardhat (executes target project code)
+  --no-exec          Explicitly skip execution (default; overrides --exec)
+  --output-dir <dir>  Report destination (default: current directory)
   --include-low      Include LOW and INFO severity in output
   --help             Show this help
 `);
   process.exit(0);
 }
 
-const ROOT = resolve(args.project);
-if (!existsSync(ROOT)) { console.error(`Not found: ${ROOT}`); process.exit(1); }
+const requestedRoot = resolve(args.project);
+if (!existsSync(requestedRoot) || !statSync(requestedRoot).isDirectory()) {
+  console.error('Project must be an existing directory'); process.exit(1);
+}
+const ROOT = realpathSync(requestedRoot);
 
 // ─── SEVERITY & FINDING MODEL ────────────────────────────────────────────────
 const SEV = { BLOCKER: 0, HIGH: 1, MEDIUM: 2, LOW: 3, INFO: 4 };
@@ -72,7 +79,10 @@ function finding(severity, title, evidence, why, fix, confidence = "high") {
 // ─── FILE UTILITIES ──────────────────────────────────────────────────────────
 function read(rel) {
   const p = join(ROOT, rel);
-  return existsSync(p) ? readFileSync(p, "utf-8") : null;
+  if (!existsSync(p)) return null;
+  const actual = realpathSync(p);
+  if (actual !== ROOT && !actual.startsWith(ROOT + sep)) return null;
+  return readFileSync(actual, "utf-8");
 }
 function exists(rel) { return existsSync(join(ROOT, rel)); }
 function glob(dir, exts, maxDepth = 3, depth = 0) {
@@ -107,9 +117,9 @@ function searchFiles(patterns, dirs = ["test", "scripts", "deploy", "ignition", 
   return hits;
 }
 
-function safeExec(cmd, opts = {}) {
+function safeExec(file, argv = []) {
   try {
-    return execSync(cmd, { cwd: ROOT, timeout: 30000, encoding: "utf-8", stdio: "pipe", ...opts }).trim();
+    return execFileSync(file, argv, { cwd: ROOT, timeout: 30000, encoding: "utf-8", stdio: "pipe", maxBuffer: 1024 * 1024 }).trim();
   } catch (e) {
     return { error: true, stderr: (e.stderr || "").trim(), stdout: (e.stdout || "").trim(), code: e.status };
   }
@@ -154,8 +164,8 @@ function checkPackage() {
 
   // Legacy/deprecated packages
   const legacy = {
-    "@nomiclabs/hardhat-ethers": { replace: "@nomicfoundation/hardhat-ethers@^3", sev: SEV.HIGH },
-    "@nomiclabs/hardhat-waffle": { replace: "@nomicfoundation/hardhat-chai-matchers@^3", sev: SEV.HIGH },
+    "@nomiclabs/hardhat-ethers": { replace: "@nomicfoundation/hardhat-ethers (verify Hardhat 3 peerDependencies)", sev: SEV.HIGH },
+    "@nomiclabs/hardhat-waffle": { replace: "Hardhat 3 Mocha/Ethers toolbox (verify peerDependencies)", sev: SEV.HIGH },
     "@nomiclabs/hardhat-etherscan": { replace: "@nomicfoundation/hardhat-verify@^3", sev: SEV.HIGH },
     "@typechain/hardhat": { replace: "Remove — V3 has native type generation", sev: SEV.MEDIUM },
     "hardhat-gas-reporter": { replace: "Remove — V3 has built-in gas stats", sev: SEV.MEDIUM },
@@ -321,7 +331,7 @@ function checkPlugins() {
       return { status: "NEEDS_REVIEW", note: `Version ${v} — upgrade to @nomicfoundation/hardhat-verify@^3` };
     }},
     { name: "OZ Upgrades", pkg: "@openzeppelin/hardhat-upgrades", check: (v) => {
-      return { status: "NEEDS_REVIEW", note: "OZ Upgrades V3 support is in pre-release. Verify hre.upgrades patterns still work. HIGH RISK migration hotspot." };
+      return { status: "NEEDS_REVIEW", note: "Verify the installed OpenZeppelin plugin peerDependencies and current Hardhat 3 migration documentation; runtime compatibility is not established by this static check." };
     }},
     { name: "hardhat-gas-reporter", pkg: "hardhat-gas-reporter", check: () => {
       return { status: "BLOCKED", note: "Remove — Hardhat V3 has built-in gas statistics" };
@@ -342,7 +352,7 @@ function checkPlugins() {
       return { status: "BLOCKED", note: "Replace with @nomicfoundation/hardhat-verify@^3" };
     }},
     { name: "hardhat-waffle (legacy)", pkg: "@nomiclabs/hardhat-waffle", check: () => {
-      return { status: "BLOCKED", note: "Replace with @nomicfoundation/hardhat-chai-matchers@^3" };
+      return { status: "BLOCKED", note: "Replace with Hardhat 3 Mocha/Ethers toolbox (verify peerDependencies)" };
     }},
     { name: "typechain", pkg: "@typechain/hardhat", check: () => {
       return { status: "BLOCKED", note: "Remove — V3 generates types natively" };
@@ -430,45 +440,36 @@ function checkSourceTests() {
 // CHECK 6: EXECUTION CHECKS
 // ═══════════════════════════════════════════════════════════════════════════════
 function checkExecution() {
-  if (args["no-exec"]) {
-    finding(SEV.INFO, "Execution checks skipped", "--no-exec flag", "Skipped by user request", "None");
+  if (!args.exec || args["no-exec"]) {
+    finding(SEV.INFO, "Execution checks skipped", "static-only default", "No project code executed", "Use --exec only for a trusted working copy");
     return;
   }
-
-  // Check Node version
-  const nodeVer = safeExec("node --version");
-  if (typeof nodeVer === "string") {
-    const major = parseInt(nodeVer.replace("v", ""));
-    if (major < 18) {
-      finding(SEV.BLOCKER, "Node.js version too old", `Node ${nodeVer}`, "Hardhat V3 requires Node 18.19+, recommends 22+", "Upgrade Node.js");
-    } else if (major < 22) {
-      finding(SEV.LOW, "Node.js version below recommended", `Node ${nodeVer}`, "Hardhat V3 recommends Node 22+", "Consider upgrading");
-    } else {
-      finding(SEV.INFO, "Node.js version OK", `Node ${nodeVer}`, "Meets V3 requirements", "None");
-    }
+  const [major, minor] = process.versions.node.split('.').map(Number);
+  if (major < 22 || (major === 22 && minor < 13) || major % 2 !== 0) {
+    finding(SEV.BLOCKER, "Unsupported Node.js for Hardhat 3", process.version,
+      "Hardhat 3 supports Node 22.13.0+ and subsequent even major releases", "Use a supported even Node.js release");
+    return;
   }
-
-  // Hardhat version check
-  if (exists("node_modules")) {
-    const hhVer = safeExec("npx hardhat --version");
-    if (typeof hhVer === "string" && hhVer.match(/\d+\.\d+/)) {
-      finding(SEV.INFO, "Hardhat runtime version", hhVer.trim(), "Installed Hardhat version", "None");
-    } else if (hhVer?.error) {
-      finding(SEV.HIGH, "Hardhat failed to run", hhVer.stderr?.slice(0, 200) || "Unknown error",
-        "Hardhat binary failed — migration may be broken", "Check config and dependencies");
-    }
-
-    // Config load test
-    const configTest = safeExec("npx hardhat --help");
-    if (configTest?.error) {
-      finding(SEV.HIGH, "Hardhat config failed to load", configTest.stderr?.slice(0, 300) || "Config load error",
-        "Config is invalid or has import/module errors", "Fix config errors — this blocks all Hardhat operations");
-    } else {
-      finding(SEV.INFO, "Hardhat config loads successfully", "npx hardhat --help succeeded", "Config is loadable", "None");
-    }
-  } else {
-    finding(SEV.LOW, "node_modules not found", "Dependencies not installed",
-      "Cannot run execution checks without installed dependencies", "Run npm install first, then re-run validator");
+  const manifestText = read('node_modules/hardhat/package.json');
+  if (!manifestText) {
+    finding(SEV.LOW, "Installed Hardhat not found", "No local Hardhat manifest", "Execution skipped; no package download attempted", "Install dependencies in a trusted working copy");
+    return;
+  }
+  const manifest = JSON.parse(manifestText);
+  const bin = typeof manifest.bin === 'string' ? manifest.bin : manifest.bin?.hardhat;
+  if (typeof bin !== 'string') {
+    finding(SEV.HIGH, "Hardhat CLI entry missing", "package.json bin", "Cannot perform runtime checks", "Repair installed Hardhat"); return;
+  }
+  const packageRoot = realpathSync(join(ROOT, 'node_modules/hardhat'));
+  const cli = resolve(packageRoot, bin);
+  if (!existsSync(cli) || !realpathSync(cli).startsWith(packageRoot + sep)) {
+    finding(SEV.HIGH, "Invalid Hardhat CLI path", "bin must remain within installed package", "Execution refused", "Repair installed Hardhat"); return;
+  }
+  for (const flag of ['--version', '--help']) {
+    const result = safeExec(process.execPath, [cli, flag]);
+    if (result?.error) finding(SEV.HIGH, "Hardhat runtime check failed", flag,
+      "Installed CLI failed; captured output omitted to avoid leaking project secrets", "Run the trusted CLI locally to diagnose");
+    else finding(SEV.INFO, "Hardhat runtime check succeeded", flag, "Installed CLI completed", "None");
   }
 }
 
@@ -606,21 +607,23 @@ function main() {
   const { report } = generateReport();
   printConsole(report);
 
-  // Write reports — try target dir first, fall back to cwd
-  function writeReport(name, content) {
-    for (const dir of [ROOT, process.cwd()]) {
-      try {
-        const p = join(dir, name);
-        writeFileSync(p, content);
-        console.log(`  ${name}: ${p}`);
-        return;
-      } catch {}
+  // Reports are opt-in, with no fallback into the source tree and no overwrite.
+  if (args.json || args.markdown) {
+    const outputDir = resolve(args["output-dir"] || process.cwd());
+    mkdirSync(outputDir, { recursive: true });
+    const outputs = [];
+    if (args.json) outputs.push(['hardhat-v3-validator-report.json', JSON.stringify(report, null, 2)]);
+    if (args.markdown) outputs.push(['hardhat-v3-validator-report.md', renderMarkdown(report)]);
+    if (outputs.some(([name]) => existsSync(join(outputDir, name)))) {
+      console.error('Report already exists; choose a new --output-dir. Nothing overwritten.');
+      process.exit(3);
     }
-    console.error(`  Could not write ${name} (permission denied)`);
+    for (const [name, content] of outputs) {
+      const target = join(outputDir, name);
+      writeFileSync(target, content, { flag: 'wx', mode: 0o600 });
+      console.log(`  ${name}: ${target}`);
+    }
   }
-  writeReport("hardhat-v3-validator-report.json", JSON.stringify(report, null, 2));
-  writeReport("hardhat-v3-validator-report.md", renderMarkdown(report));
-  console.log("");
 
   // Exit code
   const blockers = findings.filter(f => f.severity === "BLOCKER").length;
