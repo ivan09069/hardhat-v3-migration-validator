@@ -447,8 +447,8 @@ function checkExecution() {
   const [major, minor] = process.versions.node.split('.').map(Number);
   if (major < 22 || (major === 22 && minor < 13) || major % 2 !== 0) {
     finding(SEV.BLOCKER, "Unsupported Node.js for Hardhat 3", process.version,
-      "Hardhat 3 supports Node 22.13.0+ and subsequent even major releases", "Use a supported even Node.js release");
-    return;
+      "Hardhat 3 supports Node 22.13.0+ and subsequent even major releases. --exec still probes the installed CLI.",
+      "Use a supported even Node.js release");
   }
   const manifestText = read('node_modules/hardhat/package.json');
   if (!manifestText) {

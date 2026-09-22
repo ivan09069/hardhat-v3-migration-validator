@@ -72,6 +72,10 @@ Exit codes: `0` = PASS, `1` = HIGH findings, `2` = BLOCKER findings.
 | `--no-exec` | Skip execution checks (default; overrides `--exec`) |
 | `--include-low` | Include LOW and INFO findings |
 
+## Reviews
+
+Pilot packages for one repository are in [SERVICE_OFFER.md](SERVICE_OFFER.md). Price and scope stay in that file.
+
 ## Severity Model
 
 | Level | Meaning |
