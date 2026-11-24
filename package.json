@@ -1,6 +1,6 @@
 {
   "name": "hardhat-v3-migration-validator",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Validate whether a Hardhat project is actually V3-ready after migration.",
   "type": "module",
   "bin": {
@@ -30,7 +30,7 @@
     "url": "https://github.com/ivan09069/hardhat-v3-migration-validator/issues"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=22.13.0"
   },
   "scripts": {
     "test": "node --test"

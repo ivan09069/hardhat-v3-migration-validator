@@ -81,13 +81,17 @@ function read(rel) {
   const p = join(ROOT, rel);
   if (!existsSync(p)) return null;
   const actual = realpathSync(p);
-  if (actual !== ROOT && !actual.startsWith(ROOT + sep)) return null;
+  if (actual !== ROOT && !actual.startsWith(ROOT + sep)) throw new Error("Outside project boundary");
+  const info = statSync(actual);
+  if (!info.isFile() || info.size > 2 * 1024 * 1024) throw new Error("Unsafe or oversized input");
   return readFileSync(actual, "utf-8");
 }
 function exists(rel) { return existsSync(join(ROOT, rel)); }
 function glob(dir, exts, maxDepth = 3, depth = 0) {
   const base = join(ROOT, dir);
   if (!existsSync(base) || !statSync(base).isDirectory()) return [];
+  const actual = realpathSync(base);
+  if (actual !== ROOT && !actual.startsWith(ROOT + sep)) throw new Error("Outside project boundary");
   const results = [];
   try {
     for (const e of readdirSync(base, { withFileTypes: true })) {
@@ -96,7 +100,7 @@ function glob(dir, exts, maxDepth = 3, depth = 0) {
       if (e.isFile() && exts.some(x => e.name.endsWith(x))) results.push(rel);
       if (e.isDirectory() && depth < maxDepth) results.push(...glob(rel, exts, maxDepth, depth + 1));
     }
-  } catch {}
+  } catch { throw new Error("Source enumeration failed"); }
   return results;
 }
 
@@ -108,6 +112,7 @@ function searchFiles(patterns, dirs = ["test", "scripts", "deploy", "ignition", 
       const content = read(f);
       if (!content) continue;
       for (const p of patterns) {
+        p.regex.lastIndex = 0;
         if (p.regex.test(content)) {
           hits.push({ file: f, pattern: p.label });
         }
@@ -135,13 +140,22 @@ const ctx = {
 // ═══════════════════════════════════════════════════════════════════════════════
 // CHECK 1: PACKAGE / DEPENDENCY SURFACE
 // ═══════════════════════════════════════════════════════════════════════════════
+function parseManifest(raw) {
+  const data = JSON.parse(raw);
+  if (!data || typeof data !== "object" || Array.isArray(data)) throw new Error("Invalid manifest");
+  for (const field of ["dependencies", "devDependencies", "scripts"]) {
+    if (data[field] !== undefined && (!data[field] || typeof data[field] !== "object" || Array.isArray(data[field]) ||
+        Object.values(data[field]).some(v => typeof v !== "string"))) throw new Error("Invalid manifest field");
+  }
+  return data;
+}
 function checkPackage() {
   const raw = read("package.json");
   if (!raw) {
     finding(SEV.BLOCKER, "No package.json found", ROOT, "Cannot analyze dependencies without package.json", "Run npm init or verify project path");
     return;
   }
-  const pkg = JSON.parse(raw);
+  const pkg = parseManifest(raw);
   ctx.deps = pkg.dependencies || {};
   ctx.devDeps = pkg.devDependencies || {};
   ctx.allDeps = { ...ctx.deps, ...ctx.devDeps };
@@ -275,7 +289,7 @@ function checkConfig() {
   // Side-effect plugin imports (V2 pattern)
   const sideEffects = cfg.match(/^import\s+["'][^"']+["'];?\s*$/gm);
   if (sideEffects && sideEffects.length > 0) {
-    finding(SEV.MEDIUM, "Side-effect plugin imports detected", sideEffects.slice(0, 3).join("; "),
+    finding(SEV.MEDIUM, "Side-effect plugin imports detected", "Bare imports found (contents omitted)",
       "V2-style bare imports (import 'plugin') don't register plugins in V3 — they must be in plugins[]",
       "Change to named imports and add to plugins array");
   }
@@ -362,7 +376,7 @@ function checkPlugins() {
   for (const pc of pluginChecks) {
     const ver = ctx.allDeps[pc.pkg];
     if (!ver) continue;
-    const result = pc.check(ver);
+    const result = pc.check(safeVersion(ver));
     ctx.plugins.push({ name: pc.name, package: pc.pkg, version: ver, ...result });
     const sev = result.status === "BLOCKED" ? SEV.HIGH : result.status === "NEEDS_REVIEW" ? SEV.MEDIUM : SEV.INFO;
     finding(sev, `Plugin: ${pc.name} [${result.status}]`, `${pc.pkg}@${ver}`, result.note,
@@ -415,7 +429,7 @@ function checkSourceTests() {
   // V2 compile references in scripts
   const pkgRaw = read("package.json");
   if (pkgRaw) {
-    const pkg = JSON.parse(pkgRaw);
+    const pkg = parseManifest(pkgRaw);
     const scripts = pkg.scripts || {};
     for (const [name, cmd] of Object.entries(scripts)) {
       if (typeof cmd === "string" && cmd.includes("hardhat compile")) {
@@ -455,7 +469,7 @@ function checkExecution() {
     finding(SEV.LOW, "Installed Hardhat not found", "No local Hardhat manifest", "Execution skipped; no package download attempted", "Install dependencies in a trusted working copy");
     return;
   }
-  const manifest = JSON.parse(manifestText);
+  const manifest = parseManifest(manifestText);
   const bin = typeof manifest.bin === 'string' ? manifest.bin : manifest.bin?.hardhat;
   if (typeof bin !== 'string') {
     finding(SEV.HIGH, "Hardhat CLI entry missing", "package.json bin", "Cannot perform runtime checks", "Repair installed Hardhat"); return;
@@ -476,6 +490,9 @@ function checkExecution() {
 // ═══════════════════════════════════════════════════════════════════════════════
 // REPORTING
 // ═══════════════════════════════════════════════════════════════════════════════
+function safeVersion(value) {
+  return typeof value === "string" && /^[0-9v~^<>=.* |+-]{1,80}$/.test(value) ? value : "(omitted)";
+}
 function generateReport() {
   const sorted = [...findings].sort((a, b) => SEV[a.severity] - SEV[b.severity]);
   const filtered = args["include-low"] ? sorted : sorted.filter(f => SEV[f.severity] <= SEV.MEDIUM);
@@ -488,20 +505,20 @@ function generateReport() {
 
   const report = {
     validator: "hardhat-v3-migration-validator",
-    version: "1.0.0",
+    version: "0.1.2",
     timestamp: new Date().toISOString(),
-    project: ROOT,
+    project: "(local target)",
     overallStatus,
     summary: { total: findings.length, ...counts },
     context: {
-      hardhatVersion: ctx.hardhatVersion,
+      hardhatVersion: safeVersion(ctx.hardhatVersion),
       moduleType: ctx.moduleType,
       configFile: ctx.configFile,
       packageManager: ctx.packageManager,
       deployStack: ctx.deployStack,
-      plugins: ctx.plugins,
+      plugins: ctx.plugins.map(p => ({...p, version: safeVersion(p.version)})),
     },
-    findings: sorted,
+    findings: sorted.map(f => ({...f, evidence: "Evidence details omitted; inspect the target locally."})),
   };
   return { report, filtered };
 }
@@ -564,7 +581,7 @@ function renderMarkdown(report) {
       lines.push(`${i + 1}. **[${f.severity}]** ${f.title} — ${f.fix}`);
     });
   }
-  lines.push(`\n---\n*Generated by hardhat-v3-migration-validator v1.0.0*`);
+  lines.push(`\n---\n*Generated by hardhat-v3-migration-validator v0.1.2*`);
   return lines.join("\n");
 }
 
@@ -633,4 +650,4 @@ function main() {
   process.exit(0);
 }
 
-main();
+try { main(); } catch { console.error("Scan failed: invalid, unreadable, or oversized project input. No successful verdict."); process.exitCode = 3; }

@@ -39,3 +39,19 @@ test('no-exec overrides exec, while explicit exec runs the installed CLI', () =>
   run('--exec','--no-exec'); assert.equal(existsSync(marker),false);
   run('--exec'); assert.equal(existsSync(marker),true);
 }));
+
+test('invalid manifest fails closed', () => fixture(({project,run}) => {
+  writeFileSync(join(project,'package.json'),'{bad json');
+  const result=run(); assert.equal(result.status,3); assert.ok(!result.stderr.includes('{bad json'));
+}));
+test('oversized manifest fails closed', () => fixture(({project,run}) => {
+  writeFileSync(join(project,'package.json'),' '.repeat(2*1024*1024+1));
+  assert.equal(run().status,3);
+}));
+test('reports omit sensitive project evidence', () => fixture(({root,project,run}) => {
+  const secret='SYNTHETIC_SECRET_NOT_REAL';
+  writeFileSync(join(project,'package.json'),JSON.stringify({type:'module',devDependencies:{hardhat:'^3.0.0','hardhat-deploy':secret},scripts:{build:'hardhat compile '+secret}}));
+  const out=join(root,'report');
+  assert.ok([0,1,2].includes(run('--json','--markdown','--output-dir',out).status));
+  for(const name of ['hardhat-v3-validator-report.json','hardhat-v3-validator-report.md']) assert.ok(!readFileSync(join(out,name),'utf8').includes(secret));
+}));

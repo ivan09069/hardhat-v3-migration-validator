@@ -138,3 +138,7 @@ test, deployment, or security certification.
 node validate-hardhat-v3.mjs --project . --no-exec
 node --test
 ```
+
+## Security and release integrity
+
+Use v0.1.2 or newer. v0.1.1 was withdrawn. Reports omit raw evidence and non-version dependency strings; inspect target files locally. Invalid or oversized input returns exit code 3. Individual scanned files are capped at 2 MiB. Never use --exec against untrusted projects. Reports remain local unless you share them.
